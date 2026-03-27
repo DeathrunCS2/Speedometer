@@ -1,6 +1,5 @@
 using Deathrun.Speedometer.Interfaces.Managers;
 using Deathrun.Speedometer.Interfaces.Managers.Native;
-using Deathrun.Speedometer.Interfaces.Managers.SpeedManager;
 using Deathrun.Speedometer.Managers.Native.ClientListener;
 using Deathrun.Speedometer.Managers.Native.Event;
 using Deathrun.Speedometer.Managers.Native.GameListener;
@@ -18,7 +17,7 @@ internal static class ManagersDependencyInjection
         services.AddSingleton<IManager, IEventManager, EventManager>();
         services.AddSingleton<IManager, IGameListenerManager, GameListenerManager>();
         
-        services.AddSingleton<IManager, ISpeedManager, SpeedManager.SpeedManager>();
+        services.AddSingleton<IManager, ISpeedManager, SpeedManager>();
             
         return services;
     }

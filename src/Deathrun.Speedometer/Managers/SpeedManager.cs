@@ -1,16 +1,11 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Globalization;
-using Deathrun.Speedometer.Interfaces.Managers.SpeedManager;
+﻿using System.Globalization;
+using Deathrun.Speedometer.Interfaces.Managers;
 using DeathrunManager.Shared.Objects;
 using Sharp.Shared;
-using Sharp.Shared.GameEntities;
-using Sharp.Shared.HookParams;
 using Sharp.Shared.Listeners;
-using Sharp.Shared.Managers;
 using Sharp.Shared.Objects;
 
-namespace Deathrun.Speedometer.Managers.SpeedManager;
+namespace Deathrun.Speedometer.Managers;
 
 internal class SpeedManager(
     IModSharp modSharp) : ISpeedManager, IGameListener
