@@ -1,165 +1,70 @@
 using System;
-using System.IO;
-using Deathrun.Speedometer.Interfaces;
-using Deathrun.Speedometer.Interfaces.Managers;
-using Deathrun.Speedometer.Managers;
+using System.Globalization;
 using DeathrunManager.Shared;
-using Microsoft.Extensions.Configuration;
+using DeathrunManager.Shared.Objects;
 using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Logging;
 using Sharp.Shared;
-using Sharp.Shared.Abstractions;
 
 namespace Deathrun.Speedometer;
 
-public class Speedometer : IModSharpModule
+public class Speedometer : IDeathrunModule
 {
-    public string DisplayName         => $"[Deathrun][Module] Speedometer - Build #{_bridge.BuildNumber} - Last Build Time: {_bridge.FileTime}";
-    public string DisplayAuthor       => "AquaVadis";
+    public string Name         => $"Speedometer Extension";
+    public string Author       => "AquaVadis";
     
-    private readonly ServiceProvider  _serviceProvider;
-    
-#pragma warning disable CA2211
-    public static IDeathrunManager DeathrunManagerApi      = null!;
-#pragma warning restore CA2211
-    
-    private static InterfaceBridge _bridge            = null!;
+    public IDeathrunManager DeathrunManagerApi { get; } = null!;
     private static ILogger<Speedometer> _logger       = null!;
     
-    public Speedometer(ISharedSystem sharedSystem,
-        string                   dllPath,
-        string                   sharpPath,
-        Version                  version,
-        IConfiguration           coreConfiguration,
-        bool                     hotReload)
+    public Speedometer(ISharedSystem sharedSystem, IDeathrunManager deathrunManagerApi)
     {
-        _bridge = new InterfaceBridge(dllPath, sharpPath, version, sharedSystem);
         _logger = sharedSystem.GetLoggerFactory().CreateLogger<Speedometer>();
-        
-        var configuration = new ConfigurationBuilder()
-                                .AddJsonFile(Path.Combine(dllPath, "base.json"), true, false)
-                                .Build();
-        
-        var services = new ServiceCollection();
-
-        services.AddSingleton(_bridge);
-        services.AddSingleton(_bridge.ModSharp);
-        services.AddSingleton(_bridge.HookManager);
-        services.AddSingleton(_bridge.EntityManager);
-        services.AddSingleton(_bridge.LoggerFactory);
-        services.AddSingleton(sharedSystem);
-        services.AddSingleton<IConfiguration>(configuration);
-        services.TryAdd(ServiceDescriptor.Singleton(typeof(ILogger<>), typeof(Logger<>)));
-        
-        services.AddManagers();
-        _serviceProvider = services.BuildServiceProvider();
     }
 
     #region IModule
     
     public bool Init()
     {
-        _logger.LogInformation("[Deathrun.Speedometer] {colorMessage}", "Load Deathrun Speedometer!");
+        DeathrunManagerApi.Managers.PlayersManager.ThinkPost += OnDeathrunPlayerThinkPost;
         
-        //load managers
-        CallInit<IManager>();
+        _logger.LogInformation("[Deathrun.Speedometer] {colorMessage}", "Load Deathrun Speedometer!");
         return true;
     }
 
-    public void PostInit() { CallPostInit<IManager>(); }
+    public void PostInit() { }
 
     public void Shutdown()
     {
-        CallShutdown<IManager>();
+        DeathrunManagerApi.Managers.PlayersManager.ThinkPost -= OnDeathrunPlayerThinkPost;
 
-        _serviceProvider.ShutdownAllSharpExtensions();
-        
         _logger.LogInformation("[Deathrun.Speedometer] {colorMessage}", "Unloaded Deathrun Speedometer!");
     }
 
-    public void OnAllModulesLoaded()
-    {
-        DeathrunManagerApi 
-            = _bridge
-                .SharpModuleManager
-                .GetOptionalSharpModuleInterface<IDeathrunManager>(IDeathrunManager.Identity)?
-                .Instance ?? throw new Exception("Failed to capture Deathrun Manager Api!");
+    public void OnAllModulesLoaded() { }
 
-        CallOnAllSharpModulesLoaded<IManager>();
-    }
-
-    public void OnLibraryConnected(string name) { }
-
-    public void OnLibraryDisconnect(string name) { }
-    
-    #endregion
-    
-    #region Injected Instances' Caller methods
-    
-    private int CallInit<T>() where T : IBaseInterface
-    {
-        var init = 0;
-
-        foreach (var service in _serviceProvider.GetServices<T>())
-        {
-            if (!service.Init())
-            {
-                _logger.LogError("Failed to Init {service}!", service.GetType().FullName);
-
-                return -1;
-            }
-
-            init++;
-        }
-
-        return init;
-    }
-
-    private void CallPostInit<T>() where T : IBaseInterface
-    {
-        foreach (var service in _serviceProvider.GetServices<T>())
-        {
-            try
-            {
-                service.OnPostInit();
-            }
-            catch (Exception e)
-            {
-                _logger.LogError(e, "An error occurred while calling PostInit in {m}", service.GetType().Name);
-            }
-        }
-    }
-
-    private void CallShutdown<T>() where T : IBaseInterface
-    {
-        foreach (var service in _serviceProvider.GetServices<T>())
-        {
-            try
-            {
-                service.Shutdown();
-            }
-            catch (Exception e)
-            {
-                _logger.LogError(e, "An error occurred while calling Shutdown in {m}", service.GetType().Name);
-            }
-        }
-    }
-
-    private void CallOnAllSharpModulesLoaded<T>() where T : IBaseInterface
-    {
-        foreach (var service in _serviceProvider.GetServices<T>())
-        {
-            try
-            {
-                service.OnAllSharpModulesLoaded();
-            }
-            catch (Exception e)
-            {
-                _logger.LogError(e, "An error occurred while calling OnAllSharpModulesLoaded in {m}", service.GetType().Name);
-            }
-        }
-    }
+    public bool Reload(IServiceProvider serviceProvider) { return true; }
 
     #endregion
+    
+    private static void OnDeathrunPlayerThinkPost(IDeathrunPlayer deathrunPlayer)
+    {
+        float speedNum = 0;
+        if (deathrunPlayer.PlayerPawn?.IsAlive is true)
+        {
+            speedNum = deathrunPlayer.PlayerPawn?.GetAbsVelocity().Length() ?? 999;
+        }
+        else
+        {
+            var observedDeathrunPlayer = deathrunPlayer.ObservedDeathrunPlayer;
+            if (observedDeathrunPlayer is null) return;
+                
+            speedNum = observedDeathrunPlayer.PlayerPawn?.GetAbsVelocity().Length() ?? 777;
+        }
+            
+        deathrunPlayer.SetCenterMenuMiddleRowHtml
+        (
+            $"<font class='fontSize-m stratum-font fontWeight-Bold' color='#A7A7A7'>Speed: </font>"
+            + $"<font class='fontSize-m stratum-font fontWeight-Bold' color='magenta'>{speedNum.ToString("F", CultureInfo.InvariantCulture)}</font>"    
+        );
+    }
 }

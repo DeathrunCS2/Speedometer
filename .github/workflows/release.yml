@@ -4,7 +4,7 @@ env:
   APP_NAME: "Deathrun.Speedometer"
   BASE_MODULE_PROJECT_PATH: "src/Deathrun.Speedometer/Deathrun.Speedometer.csproj"
   
-  BASE_MODULE_OUTPUT_PATH: "game/sharp/modules/Deathrun.Speedometer"
+  BASE_MODULE_OUTPUT_PATH: "game/sharp/modules/Deathrun.Manager/modules/Deathrun.Speedometer"
   
   DOTNET_VERSION: '10.0.x'  # .NET 10.0
   CONFIGURATION: Release
@@ -75,7 +75,7 @@ jobs:
         with:
           name: Deathrun.Speedometer${{ steps.build_version.outputs.version }}-build${{ github.run_number }}
           path: |
-            game/sharp/modules/Deathrun.Speedometer/
+            game/sharp/modules/Deathrun.Manager/modules/Deathrun.Speedometer/
 
        # Create GitHub Release
       - name: Create GitHub Release
