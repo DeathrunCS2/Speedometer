@@ -29,6 +29,7 @@
     
     <ItemGroup>
       <PackageReference Include="DeathrunManager.Shared" Version="*" />
+      <PackageReference Include="Sharp.Modules.AdminManager.Shared" Version="2.1.117" />
     </ItemGroup>
     
     <Target Name="CopyCompiledOutputs" AfterTargets="Build">

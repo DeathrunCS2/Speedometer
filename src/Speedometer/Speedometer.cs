@@ -2,6 +2,7 @@ using System.Globalization;
 using DeathrunManager.Shared;
 using DeathrunManager.Shared.Objects;
 using Microsoft.Extensions.Logging;
+using Sharp.Modules.AdminManager.Shared;
 using Sharp.Shared;
 
 namespace Speedometer;
@@ -11,20 +12,21 @@ public class Speedometer(ISharedSystem sharedSystem, IDeathrunManager deathrunMa
     public string                           Name                   => $"Speedometer Extension";
     public string                           Author                 => "AquaVadis";
     
-    public IDeathrunManager                 DeathrunManagerApi     { get; } = deathrunManagerApi;
+    public IDeathrunManager                 DeathrunManager     { get; } = deathrunManagerApi;
+
     private ILogger<Speedometer>            _logger                = sharedSystem.GetLoggerFactory().CreateLogger<Speedometer>();
     
     #region IModule
     
     public bool Init(bool hotReload)
     {
-        DeathrunManagerApi.Managers.PlayersManager.ThinkPost += OnDeathrunPlayerThinkPost;
+        DeathrunManager.Managers.PlayersManager.ThinkPost += OnDeathrunPlayerThinkPost;
         
         return true;
     }
     public void Shutdown(bool hotReload)
     {
-        DeathrunManagerApi.Managers.PlayersManager.ThinkPost -= OnDeathrunPlayerThinkPost;
+        DeathrunManager.Managers.PlayersManager.ThinkPost -= OnDeathrunPlayerThinkPost;
     }
 
     #endregion
