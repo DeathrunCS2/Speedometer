@@ -28,7 +28,7 @@
     </ItemGroup>
     
     <ItemGroup>
-      <PackageReference Include="DeathrunManager.Shared" Version="0.1.33" />
+      <PackageReference Include="DeathrunManager.Shared" Version="*" />
     </ItemGroup>
     
     <Target Name="CopyCompiledOutputs" AfterTargets="Build">

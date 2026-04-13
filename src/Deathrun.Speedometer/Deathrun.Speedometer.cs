@@ -1,49 +1,31 @@
-using System;
 using System.Globalization;
 using DeathrunManager.Shared;
 using DeathrunManager.Shared.Objects;
-using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Sharp.Shared;
 
 namespace Deathrun.Speedometer;
 
-public class Speedometer : IDeathrunModule
+public class Speedometer(ISharedSystem sharedSystem, IDeathrunManager deathrunManagerApi) : IDeathrunModule
 {
-    public string Name         => $"Speedometer Extension";
-    public string Author       => "AquaVadis";
+    public string                           Name                   => $"Speedometer Extension";
+    public string                           Author                 => "AquaVadis";
     
-    public IDeathrunManager DeathrunManagerApi { get; }
-    private static ILogger<Speedometer> _logger       = null!;
+    public IDeathrunManager                 DeathrunManagerApi     { get; } = deathrunManagerApi;
+    private ILogger<Speedometer>            _logger                = sharedSystem.GetLoggerFactory().CreateLogger<Speedometer>();
     
-    public Speedometer(ISharedSystem sharedSystem, IDeathrunManager deathrunManagerApi)
-    {
-        _logger = sharedSystem.GetLoggerFactory().CreateLogger<Speedometer>();
-        DeathrunManagerApi = deathrunManagerApi;
-    }
-
     #region IModule
     
-    public bool Init()
+    public bool Init(bool hotReload)
     {
         DeathrunManagerApi.Managers.PlayersManager.ThinkPost += OnDeathrunPlayerThinkPost;
         
-        _logger.LogInformation("[Deathrun.Speedometer] {colorMessage}", "Load Deathrun Speedometer!");
         return true;
     }
-
-    public void PostInit() { }
-
-    public void Shutdown()
+    public void Shutdown(bool hotReload)
     {
         DeathrunManagerApi.Managers.PlayersManager.ThinkPost -= OnDeathrunPlayerThinkPost;
-
-        _logger.LogInformation("[Deathrun.Speedometer] {colorMessage}", "Unloaded Deathrun Speedometer!");
     }
-
-    public void OnAllModulesLoaded() { }
-
-    public bool Reload(IServiceProvider serviceProvider) { return true; }
 
     #endregion
     
