@@ -9,6 +9,9 @@ using DeathrunManager.Shared.DeathrunObjects;
 using Microsoft.Extensions.Logging;
 using MySqlConnector;
 using Sharp.Shared;
+using Sharp.Shared.Enums;
+using Sharp.Shared.Listeners;
+using Speedometer.Extensions;
 using Speedometer.Interfaces.Managers;
 using Speedometer.Services;
 
@@ -16,12 +19,13 @@ namespace Speedometer.Managers;
 
 internal class MapRecordsManager(
     IModSharp modSharp,
-    IDeathrunManager deathrunManagerApi,
-    ILogger<MapRecordsManager> logger) : IManager
+    IDeathrunManager deathrunManagerApi) : IManager, IGameListener
 {
     private static MapRecordsConfig _config = null!;
     
     private static string ConnectionString { get; set; } = "";
+    
+    public static MapRecordHolder? CurrentMapRecordHolder = new();
     
     public bool Init()
     {
@@ -33,47 +37,186 @@ internal class MapRecordsManager(
         //create the necessary db tables
         SetupDatabaseTables();
 
+        modSharp.InstallGameListener(this);
+        
         deathrunManagerApi.Managers.GameplayManager.MapStarted += OnDeathrunMapStarted;
         deathrunManagerApi.Managers.GameplayManager.GameStarted += OnDeathrunGameStarted;
         deathrunManagerApi.Managers.GameplayManager.MapEnded += OnDeathrunMapEnded;
-        
-        logger.LogInformation("{msg}", $"Init MapRecordsManager!");
-        
+        deathrunManagerApi.Managers.PlayersManager.SendChatMessage += OnDeathrunPlayerSendChatMessage;
+
         return true;
     }
     
     public void Shutdown()
     {
+        modSharp.RemoveGameListener(this);
+        
         deathrunManagerApi.Managers.GameplayManager.MapStarted -= OnDeathrunMapStarted;
         deathrunManagerApi.Managers.GameplayManager.GameStarted -= OnDeathrunGameStarted;
         deathrunManagerApi.Managers.GameplayManager.MapEnded -= OnDeathrunMapEnded;
+        deathrunManagerApi.Managers.PlayersManager.SendChatMessage -= OnDeathrunPlayerSendChatMessage;
 
         MapRecordsServices.ClearCache();
     }
     
-    #region Api listeners
+    #region Listeners
 
-    private void OnDeathrunMapStarted(string mapName)
+    public void OnResourcePrecache()
     {
-        logger.LogInformation("{msg}", $"Map started: {mapName}");
+        modSharp.PrecacheResource("particles/digits_x/digits_x.vpcf");
+    }
+
+    #endregion
+    
+    #region Api listeners
+    
+    private static void OnDeathrunGameStarted(string mapName)
+    {
+        //get the map records from the database
+        Task.Run(async () => await GetMapRecordsFromDatabaseAsync());
     }
     
-    private void OnDeathrunGameStarted(string mapName)
+    private static void OnDeathrunMapStarted(string mapName)
     {
-        logger.LogInformation("{msg}", $"Game started on map: {mapName}");
+        //skip precaching if the map is not a deathrun map
+        if (mapName.Contains("dr_") is not true) return;
+        
+        Task.Run(async () =>
+        {
+            var mapRecord = await GetMapRecordFromDatabaseAsync(mapName);
+            CurrentMapRecordHolder = mapRecord is null ? new MapRecordHolder() : MapRecordsServices.GetRecord(mapName);
+            
+            if (CurrentMapRecordHolder is null) return;
+            
+            await CacheMapRecordHolderIntoDatabaseAsync(mapName, 
+                                                        CurrentMapRecordHolder.SteamId64, 
+                                                        CurrentMapRecordHolder.Name, 
+                                                        CurrentMapRecordHolder.Speed);
+        });
+        
     }
     
-    private void OnDeathrunMapEnded(string mapName)
+    private static void OnDeathrunMapEnded(string mapName)
     {
-        logger.LogInformation("{msg}", $"Map ended: {mapName}");
+        //skip precaching if the map is not a deathrun map
+        if (mapName.Contains("dr_") is not true) return;
+        
+        Task.Run(async () =>
+        {
+            if (CurrentMapRecordHolder is null || CurrentMapRecordHolder.Speed is 0) return;
+            
+            await CacheMapRecordHolderIntoDatabaseAsync(mapName, 
+                                                        CurrentMapRecordHolder.SteamId64, 
+                                                        CurrentMapRecordHolder.Name, 
+                                                        CurrentMapRecordHolder.Speed);
+        });
+    }
+    
+    private void OnDeathrunPlayerSendChatMessage(IDeathrunPlayer deathrunPlayer, PlayerSendChatMessageEventArgs args)
+    {
+        if (deathrunPlayer.Client.SteamId != CurrentMapRecordHolder?.SteamId64) return;
+
+        if (deathrunManagerApi.Managers.AdminManager.GetAdmin(deathrunPlayer.Client.SteamId) is null)
+        {
+            var message = "";
+            //we are trying to send a message with the admin prefix
+            if (args.Message.GetAfter("]").Contains(deathrunPlayer.Client.Name))
+            {
+                message = " " + "{GOLD}[Record Holder]{DEFAULT}" + args.Message.GetAfter("]");
+            }
+            else
+            {
+                message = args.Message;
+            }
+        
+            //pass the reconstructed message to the chat
+            args.Message = message.Replace($"{deathrunPlayer.Client.Name}{{DEFAULT}}:", $"{{PURPLE}}{deathrunPlayer.Client.Name}{{DEFAULT}}:{{DEFAULT}}");
+        }
     }
     
     #endregion
     
     #region Async methods
+
+    private static async Task GetMapRecordsFromDatabaseAsync()
+    {
+        try
+        {
+            await using var connection = new MySqlConnection(ConnectionString);
+            await connection.OpenAsync();
+
+            var mapsRecords = await connection.QueryAsync<(string, ulong, string, float)>(
+                $"SELECT map, record_holder_steamid64, record_holder_name, record_holder_speed FROM `{_config.TableName}`"
+
+            );
+
+            foreach (var mapsRecord in mapsRecords)
+            {
+                MapRecordsServices.TryUpdateRecord(mapName: mapsRecord.Item1,
+                                                   steamId64: mapsRecord.Item2,
+                                                   playerName: mapsRecord.Item3,
+                                                   speed: mapsRecord.Item4);
+            }
+        }
+        catch (Exception e)
+        {
+            Console.WriteLine(e);
+        }
+    }
     
-    //
+    private static async Task<MapRecordHolder?> GetMapRecordFromDatabaseAsync(string mapName)
+    {
+        try
+        {
+            await using var connection = new MySqlConnection(ConnectionString);
+            await connection.OpenAsync();
+
+            var mapRecord = await connection.QueryFirstOrDefaultAsync<MapRecordHolder>(
+                $"SELECT record_holder_steamid64, record_holder_name, record_holder_speed FROM `{_config.TableName}` WHERE map = '{mapName}'"
+
+            );
+            
+            return mapRecord;
+        }
+        catch (Exception e)
+        {
+            Console.WriteLine(e);
+        }  
+        
+        return null;
+    }
+
+    private static async Task CacheMapRecordHolderIntoDatabaseAsync(string mapName, ulong steamId64, string playerName, float speed)
+    {
+        try
+        {
+            await using var connection = new MySqlConnection(ConnectionString);
+            await connection.OpenAsync();
+            
+            var cacheMapQuery 
+                = $@" INSERT INTO `{_config.TableName}` 
+                      ( map,
+                       record_holder_steamid64,
+                       record_holder_name,
+                       record_holder_speed )  
+                      VALUES 
+                      ( @CurrentMap, @SteamId64, @PlayerName, @Speed ) 
+                      ON DUPLICATE KEY UPDATE 
+                                       record_holder_steamid64  = {steamId64},
+                                       record_holder_name       = '{playerName}',
+                                       record_holder_speed      = {speed}
+                                       
+                    ";
     
+            await connection.ExecuteAsync(cacheMapQuery,
+                new { CurrentMap = mapName, SteamId64 = steamId64, PlayerName = playerName, Speed = speed });
+        }
+        catch (Exception e)
+        {
+            Console.WriteLine(e);
+        }
+    }
+
     #endregion
     
     #region Config
@@ -129,9 +272,9 @@ internal class MapRecordsManager(
                                                (
                                                    `id` BIGINT NOT NULL AUTO_INCREMENT,
                                                    `map` TEXT NOT NULL UNIQUE,
-                                                   `record_holder_steamid64` BIGINT(255) NOT NULL,
+                                                   `record_holder_steamid64` NUMERIC(50, 0) DEFAULT 0,
                                                    `record_holder_name` TEXT DEFAULT NULL,
-                                                   `record_holder_speed` TEXT NOT NULL,
+                                                   `record_holder_speed` FLOAT DEFAULT 0,
      
                                                    PRIMARY KEY (id)
                                                )"));
@@ -153,6 +296,9 @@ internal class MapRecordsManager(
     }
     
     #endregion
+
+    int IGameListener.ListenerVersion => IGameListener.ApiVersion;
+    int IGameListener.ListenerPriority => 0;
 }
 
 public class MapRecordsConfig

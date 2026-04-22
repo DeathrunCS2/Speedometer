@@ -8,6 +8,7 @@ using Sharp.Shared;
 using Speedometer.Extensions;
 using Speedometer.Interfaces.Managers;
 using Speedometer.Managers;
+using Speedometer.Services;
 
 namespace Speedometer;
 
@@ -31,34 +32,35 @@ public class Speedometer(ISharedSystem sharedSystem, IDeathrunManager deathrunMa
         services.AddSingleton(sharedSystem.GetHookManager());
         services.AddSingleton(sharedSystem.GetEntityManager());
         services.AddSingleton(sharedSystem.GetClientManager());
+        services.AddSingleton(sharedSystem.GetTransmitManager());
         services.AddSingleton(sharedSystem.GetLoggerFactory());
         services.AddSingleton<IBaseInterface, IManager, MapRecordsManager>();
         services.AddSingleton<IBaseInterface, IManager, SpeedometerManager>();
+        services.AddSingleton<IBaseInterface, MapRecordsServices>();
         services.TryAdd(ServiceDescriptor.Singleton(typeof(ILogger<>), typeof(Logger<>)));
         
         ServiceProvider = services.BuildServiceProvider();
         
-        CallInit<IManager>();
+        CallInit();
         
         return true;
     }
     public void Shutdown(bool hotReload)
     {
-        CallShutdown<IManager>();
-        ServiceProvider.GetService<IManager>()?.Shutdown();
+        CallShutdown();
     }
 
     #endregion
     
     #region Injected Instances' Caller methods
     
-    private int CallInit<T>() where T : IBaseInterface
+    private int CallInit()
     {
         var init = 0;
 
-        foreach (var service in ServiceProvider.GetServices<T>())
+        foreach (var service in ServiceProvider.GetServices<IBaseInterface>())
         {
-            if (!service.Init())
+            if (service.Init() is not true)
             {
                 Log(service.GetType().Name, "Failed to Init {service}!");
 
@@ -71,9 +73,9 @@ public class Speedometer(ISharedSystem sharedSystem, IDeathrunManager deathrunMa
         return init;
     }
 
-    private void CallPostInit<T>() where T : IBaseInterface
+    private void CallPostInit()
     {
-        foreach (var service in ServiceProvider.GetServices<T>())
+        foreach (var service in ServiceProvider.GetServices<IBaseInterface>())
         {
             try
             {
@@ -86,9 +88,9 @@ public class Speedometer(ISharedSystem sharedSystem, IDeathrunManager deathrunMa
         }
     }
 
-    private void CallShutdown<T>() where T : IBaseInterface
+    private void CallShutdown()
     {
-        foreach (var service in ServiceProvider.GetServices<T>())
+        foreach (var service in ServiceProvider.GetServices<IBaseInterface>())
         {
             try
             {
@@ -101,9 +103,9 @@ public class Speedometer(ISharedSystem sharedSystem, IDeathrunManager deathrunMa
         }
     }
 
-    private void CallOnAllSharpModulesLoaded<T>() where T : IBaseInterface
+    private void CallOnAllSharpModulesLoaded()
     {
-        foreach (var service in ServiceProvider.GetServices<T>())
+        foreach (var service in ServiceProvider.GetServices<IBaseInterface>())
         {
             try
             {

@@ -27,6 +27,13 @@ public class SpeedometerManager(
         if (deathrunPlayer.PlayerPawn?.IsAlive is true)
         {
             speedNum = deathrunPlayer.PlayerPawn?.GetAbsVelocity().Length() ?? 999;
+            
+            if (speedNum > MapRecordsManager.CurrentMapRecordHolder?.Speed)
+            {
+                MapRecordsManager.CurrentMapRecordHolder.SteamId64 = deathrunPlayer.Client.SteamId;
+                MapRecordsManager.CurrentMapRecordHolder.Name = deathrunPlayer.Client.Name;
+                MapRecordsManager.CurrentMapRecordHolder.Speed = speedNum;
+            }
         }
         else
         {
@@ -36,20 +43,14 @@ public class SpeedometerManager(
             speedNum = observedDeathrunPlayer.PlayerPawn?.GetAbsVelocity().Length() ?? 777;
         }
         
-        var randomNum = Random.Shared.Next(0, 1);
-        
         deathrunPlayer.SetCenterMenuTopRowHtml
         (
-            randomNum is not 0 ?
-                $"<font class='fontSize-sm stratum-font fontWeight-Bold' color='#A7A7A7'>Map's Speed record: </font>"
-                + $"<font class='fontSize-m stratum-font fontWeight-Bold' color='lightred'>1964.2</font>"
-                + $"<font class='fontSize-m stratum-font fontWeight-Bold' color='magenta'> | </font>"
-                + $"<font class='fontSize-sm stratum-font fontWeight-Bold' color='#A7A7A7'>Record holder: </font>"
-                + $"<img src='https://i.ibb.co/Jwv5Bz6S/maprecordholdericon.png' width='13' height='13' />"
-                + $"<font class='fontSize-m stratum-font fontWeight-Bold' color='gold'>AquaVadis</font>" 
-                :
-                $"<font class='fontSize-m stratum-font fontWeight-Bold' color='#A7A7A7'>Speed: </font>"
-                + $"<font class='fontSize-m stratum-font fontWeight-Bold' color='magenta'>{speedNum.ToString("F", CultureInfo.InvariantCulture)}</font>"
+            $"<font class='fontSize-s stratum-font fontWeight-Bold' color='#A7A7A7'>SPEED: </font>"
+            + $"<font class='fontSize-sm stratum-font fontWeight-Bold' color='magenta'>{speedNum.ToString("F", CultureInfo.InvariantCulture)}</font>"
+            + $"<font class='fontSize-sm stratum-font fontWeight-Bold' color='#A7A7A7'> | </font>"
+            + $"<font class='fontSize-s stratum-font fontWeight-Bold' color='#A7A7A7'>RECORD: </font>"
+            + $"<font class='fontSize-sm stratum-font fontWeight-Bold' color='gold'>{MapRecordsManager.CurrentMapRecordHolder?.Speed.ToString("F", CultureInfo.InvariantCulture)}"
+            + $" <font class='fontSize-s stratum-font' color='#A7A7A7'>{(MapRecordsManager.CurrentMapRecordHolder?.Name.Length > 10 ? "(" + MapRecordsManager.CurrentMapRecordHolder.Name.Substring(0, 9) + "..)" : "(" + MapRecordsManager.CurrentMapRecordHolder?.Name + ")")}</font> </font>"
         );
     }
 
