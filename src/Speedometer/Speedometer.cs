@@ -1,15 +1,13 @@
 using System;
-using System.Globalization;
 using Speedometer.Interfaces;
 using DeathrunManager.Shared;
-using DeathrunManager.Shared.DeathrunObjects;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Logging;
 using Sharp.Shared;
 using Speedometer.Extensions;
 using Speedometer.Interfaces.Managers;
-using Speedometer.Services;
+using Speedometer.Managers;
 
 namespace Speedometer;
 
@@ -21,12 +19,10 @@ public class Speedometer(ISharedSystem sharedSystem, IDeathrunManager deathrunMa
     public IDeathrunManager                 DeathrunManager        { get; } = deathrunManagerApi;
     public required ServiceProvider         ServiceProvider;
     
-    #region IModule
+    #region IDeathrunModule
     
     public bool Init(bool hotReload)
     {
-        DeathrunManager.Managers.PlayersManager.ThinkPost += OnDeathrunPlayerThinkPost;
-        
         var services = new ServiceCollection();
         services.AddSingleton(this);
         services.AddSingleton(DeathrunManager);
@@ -36,53 +32,105 @@ public class Speedometer(ISharedSystem sharedSystem, IDeathrunManager deathrunMa
         services.AddSingleton(sharedSystem.GetEntityManager());
         services.AddSingleton(sharedSystem.GetClientManager());
         services.AddSingleton(sharedSystem.GetLoggerFactory());
-        services.AddSingleton<IBaseInterface, IMapRecords, MapRecords>();
+        services.AddSingleton<IBaseInterface, IManager, MapRecordsManager>();
+        services.AddSingleton<IBaseInterface, IManager, SpeedometerManager>();
         services.TryAdd(ServiceDescriptor.Singleton(typeof(ILogger<>), typeof(Logger<>)));
         
         ServiceProvider = services.BuildServiceProvider();
         
-        ServiceProvider.GetService<IMapRecords>()?.Init();
+        CallInit<IManager>();
         
         return true;
     }
     public void Shutdown(bool hotReload)
     {
-        DeathrunManager.Managers.PlayersManager.ThinkPost -= OnDeathrunPlayerThinkPost;
-        
-        ServiceProvider.GetService<IMapRecords>()?.Shutdown();
+        CallShutdown<IManager>();
+        ServiceProvider.GetService<IManager>()?.Shutdown();
     }
 
     #endregion
     
-    private static void OnDeathrunPlayerThinkPost(IDeathrunPlayer deathrunPlayer)
+    #region Injected Instances' Caller methods
+    
+    private int CallInit<T>() where T : IBaseInterface
     {
-        float speedNum = 0;
-        if (deathrunPlayer.PlayerPawn?.IsAlive is true)
+        var init = 0;
+
+        foreach (var service in ServiceProvider.GetServices<T>())
         {
-            speedNum = deathrunPlayer.PlayerPawn?.GetAbsVelocity().Length() ?? 999;
+            if (!service.Init())
+            {
+                Log(service.GetType().Name, "Failed to Init {service}!");
+
+                return -1;
+            }
+
+            init++;
         }
-        else
-        {
-            var observedDeathrunPlayer = deathrunPlayer.ObservedDeathrunPlayer;
-            if (observedDeathrunPlayer is null) return;
-                
-            speedNum = observedDeathrunPlayer.PlayerPawn?.GetAbsVelocity().Length() ?? 777;
-        }
-        
-        var randomNum = Random.Shared.Next(0, 1);
-        
-        deathrunPlayer.SetCenterMenuTopRowHtml
-        (
-            randomNum is not 0 ?
-                $"<font class='fontSize-sm stratum-font fontWeight-Bold' color='#A7A7A7'>Map's Speed record: </font>"
-                + $"<font class='fontSize-m stratum-font fontWeight-Bold' color='lightred'>1964.2</font>"
-                + $"<font class='fontSize-m stratum-font fontWeight-Bold' color='magenta'> | </font>"
-                + $"<font class='fontSize-sm stratum-font fontWeight-Bold' color='#A7A7A7'>Record holder: </font>"
-                + $"<img src='https://i.ibb.co/Jwv5Bz6S/maprecordholdericon.png' width='13' height='13' />"
-                + $"<font class='fontSize-m stratum-font fontWeight-Bold' color='gold'>AquaVadis</font>" 
-            :
-                $"<font class='fontSize-m stratum-font fontWeight-Bold' color='#A7A7A7'>Speed: </font>"
-                + $"<font class='fontSize-m stratum-font fontWeight-Bold' color='magenta'>{speedNum.ToString("F", CultureInfo.InvariantCulture)}</font>"
-        );
+
+        return init;
     }
+
+    private void CallPostInit<T>() where T : IBaseInterface
+    {
+        foreach (var service in ServiceProvider.GetServices<T>())
+        {
+            try
+            {
+                service.OnPostInit();
+            }
+            catch (Exception e)
+            {
+                Log(service.GetType().Name, $"An error occurred while calling PostInit | {e}");
+            }
+        }
+    }
+
+    private void CallShutdown<T>() where T : IBaseInterface
+    {
+        foreach (var service in ServiceProvider.GetServices<T>())
+        {
+            try
+            {
+                service.Shutdown();
+            }
+            catch (Exception e)
+            {
+                Log(service.GetType().Name, $"An error occurred while calling Shutdown | {e}");
+            }
+        }
+    }
+
+    private void CallOnAllSharpModulesLoaded<T>() where T : IBaseInterface
+    {
+        foreach (var service in ServiceProvider.GetServices<T>())
+        {
+            try
+            {
+                service.OnAllSharpModulesLoaded();
+            }
+            catch (Exception e)
+            {
+                
+                Log(service.GetType().Name, $"An error occurred while calling OnAllSharpModulesLoaded | {e}");
+            }
+        }
+    }
+
+    #endregion
+    
+    #region ColoredLog 
+    
+    private static void Log(string header, string message, 
+        ConsoleColor backgroundColor = ConsoleColor.DarkGray,
+        ConsoleColor textColor = ConsoleColor.Black)
+    {
+        Console.ForegroundColor = textColor;
+        Console.BackgroundColor = backgroundColor;
+        Console.Write($"{header}:");
+        Console.ResetColor();
+        Console.Write($" {message} \n");
+    }
+    
+    #endregion
 }

@@ -1,3 +1,3 @@
 namespace Speedometer.Interfaces.Managers;
 
-internal interface IMapRecords : IBaseInterface;
+internal interface IManager : IBaseInterface;

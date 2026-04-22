@@ -1,18 +1,25 @@
 ﻿using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Text.Json;
 using System.Threading.Tasks;
+using Dapper;
+using DeathrunManager.Shared;
+using DeathrunManager.Shared.DeathrunObjects;
+using Microsoft.Extensions.Logging;
+using MySqlConnector;
 using Sharp.Shared;
 using Speedometer.Interfaces.Managers;
-using MySqlConnector;
-using Dapper;
+using Speedometer.Services;
 
-namespace Speedometer.Services;
+namespace Speedometer.Managers;
 
-internal class MapRecords(
-    IModSharp modSharp) : IMapRecords
+internal class MapRecordsManager(
+    IModSharp modSharp,
+    IDeathrunManager deathrunManagerApi,
+    ILogger<MapRecordsManager> logger) : IManager
 {
-    public static MapRecordsConfig Config = null!;
+    private static MapRecordsConfig _config = null!;
     
     private static string ConnectionString { get; set; } = "";
     
@@ -25,13 +32,49 @@ internal class MapRecords(
 
         //create the necessary db tables
         SetupDatabaseTables();
+
+        deathrunManagerApi.Managers.GameplayManager.MapStarted += OnDeathrunMapStarted;
+        deathrunManagerApi.Managers.GameplayManager.GameStarted += OnDeathrunGameStarted;
+        deathrunManagerApi.Managers.GameplayManager.MapEnded += OnDeathrunMapEnded;
+        
+        logger.LogInformation("{msg}", $"Init MapRecordsManager!");
         
         return true;
     }
     
     public void Shutdown()
     {
+        deathrunManagerApi.Managers.GameplayManager.MapStarted -= OnDeathrunMapStarted;
+        deathrunManagerApi.Managers.GameplayManager.GameStarted -= OnDeathrunGameStarted;
+        deathrunManagerApi.Managers.GameplayManager.MapEnded -= OnDeathrunMapEnded;
+
+        MapRecordsServices.ClearCache();
     }
+    
+    #region Api listeners
+
+    private void OnDeathrunMapStarted(string mapName)
+    {
+        logger.LogInformation("{msg}", $"Map started: {mapName}");
+    }
+    
+    private void OnDeathrunGameStarted(string mapName)
+    {
+        logger.LogInformation("{msg}", $"Game started on map: {mapName}");
+    }
+    
+    private void OnDeathrunMapEnded(string mapName)
+    {
+        logger.LogInformation("{msg}", $"Map ended: {mapName}");
+    }
+    
+    #endregion
+    
+    #region Async methods
+    
+    //
+    
+    #endregion
     
     #region Config
     
@@ -47,7 +90,7 @@ internal class MapRecords(
         if (!File.Exists(configPath)) CreateMapRecordsConfig(configPath);
 
         var config = JsonSerializer.Deserialize<MapRecordsConfig>(File.ReadAllText(configPath))!;
-        Config = config;
+        _config = config;
     }
     
     private static void CreateMapRecordsConfig(string configPath)
@@ -59,16 +102,6 @@ internal class MapRecords(
     
     public void ReloadMapRecordsConfig() { LoadMapRecordsConfig(); }
 
-    public class MapRecordsConfig
-    {
-        public string Host { get; init; } = "localhost";
-        public string Database { get; init; } = "database_name";
-        public string User { get; init; } = "database_user";
-        public string Password { get; init; } = "database_password";
-        public int Port { get; init; } = 3306;
-        public string TableName { get; init; } = "deathrun_maprecords";
-    }
-
     #endregion
     
     #region ConnectionString
@@ -78,11 +111,11 @@ internal class MapRecords(
         //build connection string
         ConnectionString = new MySqlConnectionStringBuilder
         {
-            Database = Config.Database,
-            UserID = Config.User,
-            Password = Config.Password,
-            Server = Config.Host,
-            Port = (uint)Config.Port,
+            Database = _config.Database,
+            UserID = _config.User,
+            Password = _config.Password,
+            Server = _config.Host,
+            Port = (uint)_config.Port,
         }.ConnectionString;
     }
 
@@ -92,7 +125,7 @@ internal class MapRecords(
 
     private static void SetupDatabaseTables()
     {
-        Task.Run(() => CreateDatabaseTable($@" CREATE TABLE IF NOT EXISTS `{Config.TableName}` 
+        Task.Run(() => CreateDatabaseTable($@" CREATE TABLE IF NOT EXISTS `{_config.TableName}` 
                                                (
                                                    `id` BIGINT NOT NULL AUTO_INCREMENT,
                                                    `map` TEXT NOT NULL UNIQUE,
@@ -120,4 +153,14 @@ internal class MapRecords(
     }
     
     #endregion
+}
+
+public class MapRecordsConfig
+{
+    public string Host { get; init; } = "localhost";
+    public string Database { get; init; } = "database_name";
+    public string User { get; init; } = "database_user";
+    public string Password { get; init; } = "database_password";
+    public int Port { get; init; } = 3306;
+    public string TableName { get; init; } = "deathrun_maprecords";
 }
