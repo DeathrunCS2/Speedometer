@@ -27,11 +27,6 @@
         </AssemblyAttribute>
     </ItemGroup>
     
-    <ItemGroup>
-      <PackageReference Include="DeathrunManager.Shared" Version="*" />
-      <PackageReference Include="Sharp.Modules.AdminManager.Shared" Version="*" />
-    </ItemGroup>
-    
     <Target Name="CopyCompiledOutputs" AfterTargets="Build">
         <ItemGroup>
             <CompiledFiles Include="$(TargetDir)*.dll" />
